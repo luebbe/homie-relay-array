@@ -45,6 +45,12 @@ void setup()
   Serial << endl
          << endl;
 
+  // Initialize default settings before Homie.setup()
+  valve1.beforeHomieSetup();
+  valve2.beforeHomieSetup();
+  valve3.beforeHomieSetup();
+  valve4.beforeHomieSetup();
+
   // Set all pins to OUTPUT
   for (int i = 0; i < 8; i++)
   {
