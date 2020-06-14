@@ -1,11 +1,19 @@
-#define FW_NAME "quad-relay"
+#define FW_NAME "quad-relay-BME280"
 #define FW_VERSION "1.0.0"
 
 #include <Homie.h>
 #include <PCF8574.h>
 #include "RelayNode.hpp"
+#include "BME280Node.hpp"
 
-PCF8574 pcf8574(0x20);
+#define I2C_ADDRESS_PCF8574 0x20
+#define I2C_ADDRESS_BME280_1 0x76
+#define I2C_ADDRESS_BME280_2 0x77
+
+PCF8574 pcf8574(I2C_ADDRESS_PCF8574);
+
+BME280Node bme280Outdoor("outdoor", I2C_ADDRESS_BME280_1);
+BME280Node bme280Indoor("indoor", I2C_ADDRESS_BME280_2);
 
 bool pcf8574Found;
 
@@ -51,13 +59,25 @@ void setup()
   valve3.beforeHomieSetup();
   valve4.beforeHomieSetup();
 
+  bme280Indoor.beforeHomieSetup();
+  bme280Outdoor.beforeHomieSetup();
+
+  Homie.disableLedFeedback()
+      .disableResetTrigger();
+
+  Homie.setup();
+
+  char *msg;
+  asprintf(&msg, "• PCF8574 [0x%2x] ", I2C_ADDRESS_PCF8574);
+  Homie.getLogger() << msg;
+  free(msg);
+
   // Set all pins to OUTPUT
   for (int i = 0; i < 8; i++)
   {
     pcf8574.pinMode(i, OUTPUT);
   }
 
-  Homie.getLogger() << "• PCF8574 ";
   if (pcf8574.begin())
   {
     pcf8574Found = true;
@@ -68,11 +88,6 @@ void setup()
     pcf8574Found = false;
     Homie.getLogger() << "not found. Check wiring!" << endl;
   }
-
-  Homie.disableLedFeedback()
-      .disableResetTrigger();
-
-  Homie.setup();
 }
 
 void loop()
