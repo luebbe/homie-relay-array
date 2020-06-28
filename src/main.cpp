@@ -1,4 +1,4 @@
-#define FW_NAME "quad-relay-BME280"
+#define FW_NAME "quad-relay-bme280"
 #define FW_VERSION "1.0.0"
 
 #include <Homie.h>
@@ -7,15 +7,18 @@
 #include "BME280Node.hpp"
 
 #define I2C_ADDRESS_PCF8574 0x20
-#define I2C_ADDRESS_BME280_1 0x76
-#define I2C_ADDRESS_BME280_2 0x77
+#define I2C_ADDRESS_BME280_OUT 0x76
+#define I2C_ADDRESS_BME280_IN 0x77
 
 PCF8574 pcf8574(I2C_ADDRESS_PCF8574);
 
-BME280Node bme280Outdoor("outdoor", I2C_ADDRESS_BME280_1);
-BME280Node bme280Indoor("indoor", I2C_ADDRESS_BME280_2);
+BME280Node bme280Outdoor("outdoor", I2C_ADDRESS_BME280_OUT);
+BME280Node bme280Indoor("indoor", I2C_ADDRESS_BME280_IN);
+HomieNode pcf8574Node("pcf8574", "PCF8574", "info");
 
+const char *status = "status";
 bool pcf8574Found;
+char *pcf8574Name;
 
 bool OnGetRelayState(int8_t id);
 void OnSetRelayState(int8_t id, bool on);
@@ -45,6 +48,18 @@ void OnSetRelayState(int8_t id, bool on)
   }
 }
 
+void onHomieEvent(const HomieEvent &event)
+{
+  switch (event.type)
+  {
+  case HomieEventType::MQTT_READY:
+    pcf8574Node.setProperty(status).send(pcf8574Found ? "ok" : "error");
+    break;
+  default:
+    break;
+  }
+}
+
 void setup()
 {
   Homie_setFirmware(FW_NAME, FW_VERSION);
@@ -61,16 +76,16 @@ void setup()
 
   bme280Indoor.beforeHomieSetup();
   bme280Outdoor.beforeHomieSetup();
+  pcf8574Node.advertise(status)
+      .setDatatype("enum")
+      .setFormat("error, ok");
 
-  Homie.disableLedFeedback()
-      .disableResetTrigger();
-
+  Homie.disableResetTrigger();
+  Homie.onEvent(onHomieEvent);
   Homie.setup();
 
-  char *msg;
-  asprintf(&msg, "• PCF8574 [0x%2x] ", I2C_ADDRESS_PCF8574);
-  Homie.getLogger() << msg;
-  free(msg);
+  asprintf(&pcf8574Name, "• PCF8574 [0x%2x] ", I2C_ADDRESS_PCF8574);
+  Homie.getLogger() << pcf8574Name;
 
   // Set all pins to OUTPUT
   for (int i = 0; i < 8; i++)
