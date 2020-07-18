@@ -3,18 +3,21 @@
 
 #include <Homie.h>
 #include <PCF8574.h>
+#include "PulseNode.hpp"
 #include "RelayNode.hpp"
 #include "BME280Node.hpp"
 
 #define I2C_ADDRESS_PCF8574 0x20
 #define I2C_ADDRESS_BME280_OUT 0x76
 #define I2C_ADDRESS_BME280_IN 0x77
+#define PIN_OPTOCOUPLER 2 // =D4 on D1 Mini
 
 PCF8574 pcf8574(I2C_ADDRESS_PCF8574);
 
-BME280Node bme280Outdoor("outdoor", I2C_ADDRESS_BME280_OUT);
-BME280Node bme280Indoor("indoor", I2C_ADDRESS_BME280_IN);
+BME280Node bme280Outdoor("outdoor", "BME280", I2C_ADDRESS_BME280_OUT);
+BME280Node bme280Indoor("indoor", "BME280", I2C_ADDRESS_BME280_IN);
 HomieNode pcf8574Node("pcf8574", "PCF8574", "info");
+PulseNode door("door", "Tür", PIN_OPTOCOUPLER);
 
 const char *status = "status";
 bool pcf8574Found;
@@ -23,10 +26,15 @@ char *pcf8574Name;
 bool OnGetRelayState(int8_t id);
 void OnSetRelayState(int8_t id, bool on);
 
-RelayNode valve1("valve1", 0, OnGetRelayState, OnSetRelayState, true);
-RelayNode valve2("valve2", 1, OnGetRelayState, OnSetRelayState, true);
-RelayNode valve3("valve3", 2, OnGetRelayState, OnSetRelayState, true);
-RelayNode valve4("valve4", 3, OnGetRelayState, OnSetRelayState, true);
+RelayNode valve1("valve1", "Ventil 1", 0, OnGetRelayState, OnSetRelayState, true);
+RelayNode valve2("valve2", "Ventil 2", 1, OnGetRelayState, OnSetRelayState, true);
+RelayNode valve3("valve3", "Ventil 3", 2, OnGetRelayState, OnSetRelayState, true);
+RelayNode valve4("valve4", "Ventil 4", 3, OnGetRelayState, OnSetRelayState, true);
+
+void ICACHE_RAM_ATTR onOptoCouplerPulse()
+{
+  door.pulseDetected();
+}
 
 bool OnGetRelayState(int8_t id)
 {
@@ -52,6 +60,14 @@ void onHomieEvent(const HomieEvent &event)
 {
   switch (event.type)
   {
+  // The device rebooted when attachInterrupt was called in setup()
+  // before Wifi was connected and interrupts were already coming in.
+  case HomieEventType::WIFI_CONNECTED:
+    attachInterrupt(PIN_OPTOCOUPLER, onOptoCouplerPulse, FALLING);
+    break;
+  case HomieEventType::WIFI_DISCONNECTED:
+    detachInterrupt(PIN_OPTOCOUPLER);
+    break;
   case HomieEventType::MQTT_READY:
     pcf8574Node.setProperty(status).send(pcf8574Found ? "ok" : "error");
     break;
@@ -84,7 +100,7 @@ void setup()
   Homie.onEvent(onHomieEvent);
   Homie.setup();
 
-  asprintf(&pcf8574Name, "• PCF8574 [0x%2x] ", I2C_ADDRESS_PCF8574);
+  asprintf(&pcf8574Name, "• PCF8574 i2c[0x%2x] ", I2C_ADDRESS_PCF8574);
   Homie.getLogger() << pcf8574Name;
 
   // Set all pins to OUTPUT
