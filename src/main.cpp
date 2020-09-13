@@ -1,5 +1,5 @@
 #define FW_NAME "quad-relay-bme280"
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.0.1"
 
 #include <Homie.h>
 #include <PCF8574.h>
@@ -10,7 +10,7 @@
 #define I2C_ADDRESS_PCF8574 0x20
 #define I2C_ADDRESS_BME280_OUT 0x76
 #define I2C_ADDRESS_BME280_IN 0x77
-#define PIN_OPTOCOUPLER D7 // on Wemos D1 Mini
+#define PIN_OPTOCOUPLER D7 // = GPIO13 on Wemos D1 Mini
 
 PCF8574 pcf8574(I2C_ADDRESS_PCF8574);
 
@@ -33,7 +33,7 @@ RelayNode valve4("valve4", "Ventil 4", 3, OnGetRelayState, OnSetRelayState, true
 
 void ICACHE_RAM_ATTR onOptoCouplerPulse()
 {
-  door.pulseDetected();
+  door.onInterrupt();
 }
 
 bool OnGetRelayState(int8_t id)
@@ -44,7 +44,7 @@ bool OnGetRelayState(int8_t id)
   }
   else
   {
-    return false;
+    return true; // Reverse signal
   }
 }
 
@@ -92,6 +92,9 @@ void setup()
 
   bme280Indoor.beforeHomieSetup();
   bme280Outdoor.beforeHomieSetup();
+
+  door.beforeHomieSetup();
+
   pcf8574Node.advertise(status)
       .setDatatype("enum")
       .setFormat("error, ok");
@@ -103,10 +106,16 @@ void setup()
   asprintf(&pcf8574Name, "• PCF8574 i2c[0x%2x] ", I2C_ADDRESS_PCF8574);
   Homie.getLogger() << pcf8574Name;
 
-  // Set all pins to OUTPUT
-  for (int i = 0; i < 8; i++)
+  // Set four low pins to OUTPUT
+  for (int i = 0; i < 4; i++)
   {
     pcf8574.pinMode(i, OUTPUT);
+  }
+
+  // Set four high pins to INPUT
+  for (int i = 4; i < 8; i++)
+  {
+    pcf8574.pinMode(i, INPUT);
   }
 
   if (pcf8574.begin())
