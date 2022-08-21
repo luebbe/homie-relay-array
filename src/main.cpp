@@ -1,8 +1,9 @@
 #define FW_NAME "quad-relay-bme280"
-#define FW_VERSION "1.0.1"
+#define FW_VERSION "1.1.0"
 
 #include <Homie.h>
 #include <PCF8574.h>
+#include <Bounce2.h>
 #include "PulseNode.hpp"
 #include "RelayNode.hpp"
 #include "BME280Node.hpp"
@@ -11,6 +12,7 @@
 #define I2C_ADDRESS_BME280_OUT 0x76
 #define I2C_ADDRESS_BME280_IN 0x77
 #define PIN_OPTOCOUPLER D7 // = GPIO13 on Wemos D1 Mini
+#define PIN_PCF8574_INT D6 // = GPIO12 on Wemos D1 Mini
 
 PCF8574 pcf8574(I2C_ADDRESS_PCF8574);
 
@@ -18,6 +20,8 @@ BME280Node bme280Outdoor("outdoor", "BME280", I2C_ADDRESS_BME280_OUT);
 BME280Node bme280Indoor("indoor", "BME280", I2C_ADDRESS_BME280_IN);
 HomieNode pcf8574Node("pcf8574", "PCF8574", "info");
 PulseNode door("door", "Tür", PIN_OPTOCOUPLER);
+
+Bounce2::Button button = Bounce2::Button();
 
 const char *status = "status";
 bool pcf8574Found;
@@ -31,7 +35,7 @@ RelayNode valve2("valve2", "Ventil 2", 1, OnGetRelayState, OnSetRelayState, true
 RelayNode valve3("valve3", "Ventil 3", 2, OnGetRelayState, OnSetRelayState, true);
 RelayNode valve4("valve4", "Ventil 4", 3, OnGetRelayState, OnSetRelayState, true);
 
-void ICACHE_RAM_ATTR onOptoCouplerPulse()
+void IRAM_ATTR onOptoCouplerPulse()
 {
   door.onInterrupt();
 }
@@ -64,6 +68,9 @@ void onHomieEvent(const HomieEvent &event)
   // before Wifi was connected and interrupts were already coming in.
   case HomieEventType::WIFI_CONNECTED:
     attachInterrupt(PIN_OPTOCOUPLER, onOptoCouplerPulse, FALLING);
+    button.attach(PIN_PCF8574_INT, INPUT_PULLUP);
+    button.interval(10);
+    button.setPressedState(LOW);
     break;
   case HomieEventType::WIFI_DISCONNECTED:
     detachInterrupt(PIN_OPTOCOUPLER);
@@ -112,10 +119,10 @@ void setup()
     pcf8574.pinMode(i, OUTPUT);
   }
 
-  // Set four high pins to INPUT
+  // Set four high pins to INPUT_PULLUP
   for (int i = 4; i < 8; i++)
   {
-    pcf8574.pinMode(i, INPUT);
+    pcf8574.pinMode(i, INPUT_PULLUP);
   }
 
   if (pcf8574.begin())
@@ -133,4 +140,18 @@ void setup()
 void loop()
 {
   Homie.loop();
+
+  button.update();
+  if (button.fell())
+  {
+    PCF8574::DigitalInput val = pcf8574.digitalReadAll();
+    if (val.p4 == LOW)
+      valve1.toggleRelay();
+    if (val.p5 == LOW)
+      valve2.toggleRelay();
+    if (val.p6 == LOW)
+      valve3.toggleRelay();
+    if (val.p7 == LOW)
+      valve4.toggleRelay();
+  }
 }
